@@ -13,11 +13,11 @@ The primary goal of this project is to use machine learning classification algor
 3. Decision Tree
 
 ## Data
-The dataset used in this project consists of medical attributes for individuals, including features like age, BMI, glucose levels, blood pressure, etc. Each record in the dataset is labeled with the diabetes status: whether the individual has diabetes or not.
+The dataset used in this project consists of medical attributes for individuals, including features like age, BMI, glucose levels, blood pressure, etc. Each record in the dataset is labelled with the diabetes status: whether the individual has diabetes or not.
 
-##Evaluation
+## Evaluation
 To evaluate the effectiveness of each classifier, the following metrics will be used:
-1. 4. False Positive Rate (FPR)
+1. False Positive Rate (FPR)
 2. Precision
 3. ROC-AUC
 4. Error
