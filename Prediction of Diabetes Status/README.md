@@ -1,4 +1,4 @@
-#Diabetes Prediction Model
+# Diabetes Prediction Model
 ## Overview
 Diabetes is one of the most prevalent chronic diseases worldwide, significantly impacting public health. The increase in diabetes cases has led to a rising demand for effective methods to understand the various factors contributing to its widespread occurrence. This project aims to explore the factors influencing diabetes prevalence, focusing on identifying the risk factors and health outcomes related to the condition. Through this analysis, we aim to predict a person's diabetes status by determining the best-performing classification model, helping in early detection and intervention.
 
