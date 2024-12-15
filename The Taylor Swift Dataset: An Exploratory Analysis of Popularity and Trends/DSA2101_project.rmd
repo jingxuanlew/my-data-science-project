@@ -1,0 +1,316 @@
+---
+title: "DSA2101 Group Project: Taylor Swift Dataset"
+author:
+  - Lew Jing Xuan 
+  - Ngoh Jin Syl
+  - Tng Kai Yi 
+  - Yeo Zi Feng
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+## **Introduction**
+The Taylor Swift Dataset covers her entire discography, the specific audio features and also popularity by the metacritic scores and user scores. The dataset consists of 3 `csv` files: `taylor_album_songs.csv`, `taylor_all_songs.csv` and `taylor_albums.csv`. 
+
+1. `taylor_album_songs.csv` file contains lyrics and audio features from the Spotify API for all songs on Taylor’s official studio albums. 
+
+2. `taylors_all_songs.csv` file includes all of the songs in taylor_album_songs plus EPs, individual singles, and the original versions of albums that have been re-released as Taylor’s Version.
+
+3. `taylor_albums.csv` file contains Taylor’s album release history and both metacritic and user scores. 
+
+In this project, we explore the musical evolution of Taylor Swift through a comprehensive analysis of her discography. Using data from Tidy Tuesday, specifically focused on Taylor Swift’s songs and albums, we aim to examine key musical features and trends across her career. 
+
+The core question guiding our analysis is: **How has Taylor Swift's music evolved, and what relationships exist among the musical features in her songs?** 
+
+
+First We load the libaries to be used here: 
+```{r libraries, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(readr)
+```
+
+Then, we read in the three datasets using the `readr` package.
+```{r Reading Data, warning = FALSE, message = FALSE}
+taylor_album_songs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-10-17/taylor_album_songs.csv')
+taylor_all_songs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-10-17/taylor_all_songs.csv')
+taylor_albums <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-10-17/taylor_albums.csv')
+```
+
+## **Data Cleaning & Summary**
+#### Cleaning `taylor_albums` Dataset
+We removed the NA values from the `taylor_albums` dataset and removed the column `ep` as we did not require it.
+```{r}
+scores <- taylor_albums %>% 
+  na.omit() %>% # Removed all missing values under these columns 
+  select(-ep)
+```
+
+#### Cleaning `taylor_all_songs` Dataset
+```{r}
+filtered_taylor_songs <- taylor_all_songs %>% 
+  distinct() %>% # Ensuring that there are no repeated rows
+  select(album_name, track_name, track_release, mode_name, danceability:key_mode) %>% 
+  drop_na() # Removed all missing values under these columns 
+```
+
+#### Cleaning `taylor_album_songs` Dataset
+```{r} 
+filtered_taylor_album <- taylor_album_songs %>% 
+  distinct() %>% # Ensuring that there are no repeated rows
+  select(album_name, track_name, track_release, danceability:key_mode) %>% 
+  drop_na() # Removed all missing values under these columns 
+```
+
+Next, we want to find out if `filtered_taylor_songs` and `filtered_taylor_album` have all the albums that are present in `scores`. 
+```{r}
+# Albums that are in the `filtered_taylor_songs` but not in `scores`
+scores %>% anti_join(filtered_taylor_songs, by = "album_name")
+
+# Albums that are in the `filtered_taylor_album` but not in `scores`
+scores %>% anti_join(filtered_taylor_album, by = "album_name")
+
+# Distinct album names
+filtered_taylor_songs %>% distinct(album_name)
+scores %>% distinct(album_name)
+
+# Remove the extra album in `filtered_taylor_songs` 
+filtered_taylor_data <- filtered_taylor_songs %>% filter(!album_name == "The Taylor Swift Holiday Collection")
+```
+Since `filtered_taylor_album` have missing albums 'Fearless' and 'Red' while `filtered_taylor_songs` does not, we will use albums in `filtered_taylor_songs` for our analysis and visualisation, while removing the extra album 'The Taylor Swift Holiday Collection'. 
+
+Our final cleaned data is `filtered_taylor_data`.
+
+#### Data Exploration
+```{r}
+# Top 5 albums based on metacritic score 
+top5_meta <- filtered_taylor_data %>% 
+  group_by(album_name) %>% 
+  summarise(across(danceability:time_signature, mean, na.rm = TRUE)) %>% # average of each feature
+  left_join(scores, by = "album_name") %>% 
+  arrange(desc(metacritic_score)) %>% 
+  head(5) %>% 
+  select(album_name, metacritic_score)
+
+# Top 5 albums based on users score 
+top5_user <- filtered_taylor_data %>% 
+  group_by(album_name) %>% 
+  summarise(across(danceability:time_signature, mean, na.rm = TRUE)) %>% # average of each feature
+  left_join(scores, by = "album_name") %>% 
+  arrange(desc(user_score)) %>% 
+  head(5) %>% 
+  select(album_name, user_score)
+
+cbind(top5_meta, top5_user)
+
+
+# Total number of songs by taylor swift 
+total_songs <- filtered_taylor_data %>%
+  summarise(total_number_of_songs = n())
+total_songs
+
+# Total number of songs in every album 
+songs_per_album <- filtered_taylor_data %>% 
+  group_by(album_name) %>%
+  summarise(total_number_of_songs = n()) %>%
+  ungroup() %>% 
+  arrange(-total_number_of_songs)
+songs_per_album
+```
+#### Some interesting statistics
+
+1. Top 5 Albums based on `metacritic_score` and `user_score`. 
++ Red (Taylor's Version), folklore and evermore are consistently the top 1,2 and 4 albums both scores
++ Fearless (Taylor's Version) had a lower placing in terms of `metacritic_score` (5th Place) than `user_score` (3rd Place). 
+
+2. Her Taylor Version albums had the most number of songs produced, compared to the original albums and other albums. 
++ Additional 8 songs in Red (Taylor's Version) than Red  & additional 7 songs in Fearless (Taylor's Version) than Fearless. 
+
+
+## **Question: How has Taylor Swift's music evolved, and what relationships exist among the musical features in her songs?**
+To answer our question, we prepared 3 visualisations: a correlation matrix, line plot and bar plot. 
+
+### **Plot 1: Correlation Matrix**
+#### **Rationale**
+Given the complexity of multiple song features in our dataset, such as danceability, energy, loudness, and others, we want to explore how these features are correlated with one another and whether we can derive a trend that may be consistent across albums or evolve over time. Therefore, we used **correlation matrix** as our first plot. 
+
+The correlation matrix helps us understand which features are strongly or weakly correlated with each other.
+Values closer to 1 or -1 indicate strong correlations (positive or negative), while values closer to 0 suggest weak or no correlation.
+
+
+#### **Preparing Data for Visualisation**
+We prepared `final_taylor_data` for the first plot: Correlation Matrix. As seen in the code chunk below, we grouped `filtered_taylor_data` by `album_name` and then summarised the features based on the mean values, by the albums. We also joined `scores` with the the data for easier references. 
+```{r}
+final_taylor_data <- filtered_taylor_data %>% 
+  group_by(album_name) %>% 
+  summarise(across(danceability:time_signature, mean, na.rm = TRUE)) %>% # average of each feature
+  left_join(scores, by = "album_name") %>% # Add the album release dates and scores
+  relocate(album_release, .before = danceability)# Move album_release before danceability for easier viewing 
+```
+
+We used the gg extension library 'ggcorrplot' to plot this correlation matrix. The cor() function computes the correlation coefficients between variables in  `final_taylor_data` for columns 3 through 14, which represents the features (eg. danceability to time signature).  
+```{r Correlation Matrix}
+library(ggcorrplot)
+corr_matrix <- cor(final_taylor_data[, c(3:14)]) # Only selecting the musical features 
+ggcorrplot(corr_matrix, 
+           lab = TRUE, lab_size = 3, # Show correlation coefficients
+           type = "lower",          # Show only the lower triangle of the matrix
+           outline.color = "white", 
+           colors = c("lightblue", "white", "steelblue"),  
+           title = "Correlation Matrix of Features")
+```
+
+#### **Discussion**
+
+The correlation matrix reveals strong notable pairings: 
+
+1. **Loudness** and **Energy** (0.93): A strong, positive correlation, indicating that Taylor Swift’s songs often combine high energy with higher volume, contributing to a more intense sound.
+
+2. **Danceability** and **Speechiness** (0.74): This pairing suggests a relatively strong balance between rhythm and lyrical content, possibly suggesting that her songs with spoken words tend to have rhythmic, danceable beats to them.
+
+
+With this insight into key feature pairings, we’ll focus on energy, loudness, danceability, and speechiness as core features. By tracking these features across her discography, this helps us explore how Taylor Swift’s musical style has evolved over time in our next plot. 
+
+
+
+### **Plot 2: Line Plot**
+#### **Rationale**
+For our second plot, we will visualize the evolution of four key audio features across Taylor Swift's albums: danceability, energy, loudness, and speechiness. Each feature represents a different musical attribute: 
+
++ danceability: indicates rhythm and flow
++ energy: reflects intensity
++ loudness: measures volume levels
++ speechiness: highlights the presence of spoken words. 
+
+These features were selected based on their strong correlations, which were identified in the correlation matrix.
+
+We chose to use a **line plot** as it visually connects each album in a chronological sequence, highlighting trends and dips that correlate with her genre shifts.  By observing changes in these features, we gain insights into her genre transitions, stylistic shifts, and artistic growth.
+
+#### **Preparing Data for Visualisation** 
+Using `final_taylor_data`, we selected the 4 key features and relevant columns like `album_name` and `album_release`. We realised that `loudness` ranges from negative values more than 1, and positive values more than 1. Thus, we also standardised the values to be between 0 to 1 for more accurate comparison with other features. We used `pivot_longer()` to tidy the data in a way that we can plot individual line plots for each separate feature. 
+```{r}
+# Data Preparation 
+line_plot <- final_taylor_data %>% 
+  # selecting only the relevant features and columns we need for the plot
+  select(album_name, album_release, danceability, speechiness, energy, loudness) %>% 
+  # Making sure loudness values are  between 0 to 1 for more accurate visualisation
+  mutate(loudness = (loudness - min(loudness, na.rm = TRUE)) / (max(loudness, na.rm = TRUE) - min(loudness, na.rm = TRUE))) %>% 
+  # Tidying data
+  pivot_longer(danceability:loudness, names_to = "feature", values_to = "values")
+```
+
+We used `fct_reorder()`  ensure that album names appear in chronological order based on their release dates. This makes it easy to follow the timeline of her musical journey from her earliest to latest albums. `geom_point()` was also used to show the values of the features for each album clearly. 
+```{r line plot}
+# Plotting 
+ggplot(line_plot, aes(x = fct_reorder(album_name, album_release), y = values, color = feature, group = feature)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Evolution of Key Musical Features Across Taylor Swift's Albums (Chronological Order)", subtitle = "comparing the values of the 4 key features",
+       x = "Albums in Chronological Order", y = "Value", colour = "Feature") 
+```
+
+
+#### **Discussion**
+
+1. Significant Decrease in Loudness and Energy:
++ A large decline in both loudness and energy is evident across her albums, with a sharp dip from Lover to folklore.
++ Folklore has the lowest values for these features compared to the albums produced before, reflecting a quieter, introspective phase that aligned with the 2020 pandemic. According to Nobile, these albums “mirrored the prevailing sense of social isolation,” with Swift “capturing the entire nation’s mood” during a time of collective reflection (Hudgins, 2024).
++ Since folklore, her subsequent albums (evermore and Midnights) have continued to maintain lower levels of energy and loudness, indicating a sustained shift toward a more soothing, reflective sound.
+
+2. Anomaly, sudden increase in loudness and energy: 
++ However, we could see the sudden increase in loudness and energy again in the two albums: Fearless (Taylor's Version) and Red (Taylor's Version).
++ Taylor's Version refers to re-recorded albums that revisit songs from her earlier career (Centrella, 2023), thus reflecting her earlier, high-energy musical approach.
+
+3. Relatively stable for danceability and speechiness:
++ Danceability and speechiness remain stable across her albums, with high danceability and low speechiness values. 
++ This shows that her songs have consistently been more rhythmic and less spoken words. This makes her songs  “familiar yet distinctive,” allowing her storytelling to remain compelling across albums (Hudgins, 2024). 
+
+**Overall**
+
+Taylor Swift had shifted the genres of her albums quite significantly. She began her career with country music, characterized by higher energy and loudness, then transitioned to pop from Red to Lover, where these features were somewhat moderated. Recently, her work has shifted toward indie, folk, and alternative sounds, as noted by Frenchman (2024), aligning with the lower loudness and energy in her more recent albums. 
+
+
+### **Plot 3: Bar Plot**
+#### **Rationale**
+For our third plot, we will visualize the evolution the key mode (major vs. minor) across Taylor Swift's albums. In this bar plot, the key variables used are `album_name` and `mode_name` (major vs. minor). The `mode_name` represents whether each song is in a major or minor key.
+
++ Major keys: generally perceived as bright, happy, or uplifting, used in pop/ celebratory songs
++ Minor keys: associated with sad, introspective, or darker mood, used in ballads/alternative songs
+
+This **stacked bar chart** effectively captures the proportion of major and minor keys across Swift’s albums, making it easy to observe any shifts in musical mood over time. By arranging albums chronologically, the plot allows us to visually assess how Swift’s use of key modes evolves, and whether it aligns with the type of genre she is shifting towards. This visualization answers the question, “How has Taylor Swift’s music evolved?” by showcasing the tonal shifts in her music.
+
+
+#### **Preparing Data for Visualisation**
+We used `filtered_taylor_data` as we needed the `mode_name` of every song in Taylor Swift's discography to create this bar plot. We selected the relevant columns like `album_name` and `mode_name`. To plot in a chronological order, we first arranged the `track_release` of each song in ascending order. Then, we made `album_name` a factor, setting its levels based on the first appearance order in the sorted data. To prepare for the bar plot, we grouped the data by `album_name` then `mode_name`. Lastly, we summarised the data and created a new column called `total_count` which represents the number of songs in a specific album with the same specific mode.
+```{r}
+bar_plot <- filtered_taylor_data %>% 
+  arrange(track_release) %>% 
+  mutate(album_name = factor(album_name, levels = unique(album_name))) %>% 
+  select(album_name, mode_name) %>% 
+  group_by(album_name, mode_name) %>% 
+  summarise(total_count = n(), .groups = "drop")
+```
+
+On the x-axis, Taylor Swift's albums are arranged in chronological order. We used `geom_col(position = "fill")` to display the proportion of songs in each album that are in a major or minor mode, making it easy to compare mode distribution across albums.
+```{r bar plot}
+ggplot(bar_plot, aes(x = album_name, y = total_count, fill = mode_name)) +
+  geom_col(position = "fill") + 
+  labs(title = "Evolution of Key Mode Across Albums Overtime", subtitle = "The proportion of songs with major or minor key mode in each album", x = "Albums in Chronological Order", y = "Count", fill = "Key Mode") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+#### **Discussion**
+
+1. General Trend: 
++ Across her discography, major keys dominate her albums, contributing to the overall bright, upbeat style of her earlier music.
++ There is a consistent proportion of songs in minor keys in all her albums after 'Reputation'. This acted as the catalyst for her evolution: Shifting from youthful pop themes to introspective indie folk.
+
+2. Highest Proportion of Minor Keys: Reputation:
++ Reputation has the highest proportion of songs in minor keys. This aligns with one of the album's uniquely intense themes of rebuilding her reputation through vehemently disproving errant preconceptions the public had about her.
++ The album's use of minor keys creates a darker tone which reflects Swift's bolder, more defiant image. This resonates with her transition to a more assertive pop persona. (Gamboa, 2020).
+
+3. Absence of Songs with Minor Keys in Fearless & 1989: 
++ Both Fearless and 1989 have a largely celebratory feel, which could be explained by the featuring of only major key songs in the album.
++ The major keys in Fearless dramatize teenagehood and the roller coaster emotions of young love's exhilarating adventures (Armstrong, 2019), while 1989 celebrates reinvention and healing from past wounds. (Bruner, 2023).
++ The focus on major keys also aligns with her initial genre shift: Fearless broadened her appeal from country to mainstream pop, while 1989 contributed to her identity as a pop artist. 
+
+**Overall**
+
+The analysis highlights a clear progression in Taylor Swift’s music. Early albums, such as Fearless and 1989, are dominated by major keys, emphasizing themes of joy and reinvention. In contrast, Reputation shows a significant rise in minor keys, mirroring the album's darker, more defiant tone. This evolution continues post-Reputation, with minor keys reflecting Swift's shift to introspective indie-folk music style. 
+
+
+## **Conclusion **
+Taylor Swift's songs have evolved significantly over time:
+
+1. **Loudness and Energy**: There has been a noticeable decline, reflecting a quieter, more introspective phase that aligns with themes of social isolation. This shift introduces a soothing, reflective sound.
+
+2. **Danceability and Speechiness**: These features have remained stable, contributing to a rhythmic style with less spoken-word elements. This balance supports her familiar yet compelling storytelling.
+
+3. **Major and Minor Keys**: While major keys still dominate, creating uplifting and celebratory tones, the increase in minor keys after Reputation highlights her transition from youthful pop to more introspective indie themes.
+
+**In conclusion**,the three visualizations show how Taylor Swift’s songs have evolved over time. She started with high-energy, loud country music in mostly major keys, transitioned to pop, and has recently embraced minor keys to create indie and alternative songs, reflecting her growth as an artist. 
+
+
+## **Team Work**
++ Zi Feng: Data Cleaning & Summary
++ Jing Xuan & Kai Yi: Data Visualisation and Explanation
++ Jin Syl: Overall Data Insight & Report Writing
+
+
+## **References**
+Armstrong, J. K. (2019, August 22). Why Taylor Swift’s ‘Fearless’ Is Her Best Album. Billboard. https://www.billboard.com/music/pop/taylor-swift-fearless-best-album-8029968/
+
+Bruner, R. (2023, October 26). How 1989 Changed Taylor Swift’s Career Forever. TIME. https://time.com/6328790/taylor-swift-1989-2/
+
+Gamboa, I. (2020). Taylor Swift’s genre-hopping music evolution. The Aggie. https://theaggie.org/2020/10/12/taylor-swifts-genre-hopping-music-evolution/ 
+
+Hudgins, K. (2024). How taylor swift masterminded global success, explained by SOMD experts. How Taylor Swift Masterminded Global Success, Explained by SOMD Experts | School of Music and Dance. https://musicanddance.uoregon.edu/TaylorSwift 
+
+Frenchman, Z. (2024, February 15). Folklore: An in-depth review & breakdown. Medium. https://medium.com/@zoefrenchman/folklore-an-in-depth-review-breakdown-e979483b5ffe 
+
+Centrella, N. (2024, March 5). (Taylor’s version): Explaining Taylor Swift’s re-recordings under the copyright law. Fitzpatrick Lentz & Bubba, P.C. https://www.flblaw.com/taylors-version-explaining-taylor-swifts-re-recordings-under-the-copyright-law/#:~:text=Swift%20re%2Dreleases%20the%20original,of%20a%20previously%20released%20song  
